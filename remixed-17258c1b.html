@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neural Network Architecture Visualizer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #020818;
+    overflow: hidden;
+    font-family: 'Share Tech Mono', monospace;
+    color: #a0d4ff;
+  }
+
+  #canvas-container {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+  }
+
+  canvas { display: block; }
+
+  /* HUD Overlay */
+  #hud {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none;
+  }
+
+  /* Title */
+  #title-block {
+    position: absolute;
+    top: 28px; left: 36px;
+    pointer-events: none;
+  }
+  #title-block h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 22px;
+    font-weight: 900;
+    letter-spacing: 3px;
+    color: #e0f2ff;
+    text-shadow: 0 0 20px #38bdf8, 0 0 40px #0ea5e9;
+    text-transform: uppercase;
+  }
+  #title-block p {
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: #38bdf8;
+    margin-top: 4px;
+    opacity: 0.8;
+  }
+
+  /* Layer info panel */
+  #layer-panel {
+    position: absolute;
+    right: 28px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+  }
+
+  .layer-card {
+    background: rgba(2, 12, 35, 0.85);
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    border-left: 3px solid #38bdf8;
+    padding: 10px 16px;
+    border-radius: 4px;
+    min-width: 170px;
+    transition: all 0.3s;
+  }
+  .layer-card.active {
+    border-left-color: #f0abfc;
+    background: rgba(240, 171, 252, 0.08);
+    box-shadow: 0 0 20px rgba(240, 171, 252, 0.15);
+  }
+  .layer-card .lc-name {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: #38bdf8;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .layer-card.active .lc-name { color: #f0abfc; }
+  .layer-card .lc-nodes {
+    font-size: 22px;
+    font-weight: 700;
+    color: #e0f2ff;
+    line-height: 1;
+  }
+  .layer-card .lc-act {
+    font-size: 10px;
+    color: #64748b;
+    margin-top: 3px;
+    letter-spacing: 1px;
+  }
+
+  /* Bottom stats bar */
+  #stats-bar {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 32px;
+    background: rgba(2, 12, 35, 0.8);
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    padding: 12px 28px;
+    border-radius: 40px;
+    pointer-events: none;
+  }
+  .stat-item { text-align: center; }
+  .stat-value {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: #38bdf8;
+    text-shadow: 0 0 10px #38bdf8;
+  }
+  .stat-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: #475569;
+    margin-top: 2px;
+    text-transform: uppercase;
+  }
+
+  /* Controls hint */
+  #controls-hint {
+    position: absolute;
+    bottom: 24px;
+    left: 28px;
+    font-size: 10px;
+    color: #334155;
+    letter-spacing: 1px;
+    line-height: 1.8;
+    pointer-events: none;
+  }
+
+  /* Signal pulse legend */
+  #legend {
+    position: absolute;
+    bottom: 24px;
+    right: 28px;
+    pointer-events: none;
+    text-align: right;
+    font-size: 10px;
+    color: #334155;
+    letter-spacing: 1px;
+    line-height: 2;
+  }
+  .legend-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+
+  /* Scanline overlay */
+  #scanlines {
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 3px,
+      rgba(0,0,0,0.03) 3px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  /* Corner decorations */
+  .corner {
+    position: absolute;
+    width: 30px; height: 30px;
+    border-color: rgba(56,189,248,0.4);
+    border-style: solid;
+    pointer-events: none;
+  }
+  .corner.tl { top: 16px; left: 16px; border-width: 2px 0 0 2px; }
+  .corner.tr { top: 16px; right: 16px; border-width: 2px 2px 0 0; }
+  .corner.bl { bottom: 16px; left: 16px; border-width: 0 0 2px 2px; }
+  .corner.br { bottom: 16px; right: 16px; border-width: 0 2px 2px 0; }
+
+  /* Animate panel in */
+  @keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateX(20px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  .layer-card { animation: fadeSlideIn 0.5s ease forwards; }
+  .layer-card:nth-child(1) { animation-delay: 0.1s; opacity: 0; }
+  .layer-card:nth-child(2) { animation-delay: 0.2s; opacity: 0; }
+  .layer-card:nth-child(3) { animation-delay: 0.3s; opacity: 0; }
+  .layer-card:nth-child(4) { animation-delay: 0.4s; opacity: 0; }
+  .layer-card:nth-child(5) { animation-delay: 0.5s; opacity: 0; }
+</style>
+</head>
+<body>
+
+<div id="canvas-container">
+  <div id="hud">
+    <div id="title-block">
+      <h1>Neural Network</h1>
+      <p>Architecture Visualizer · 3D View</p>
+    </div>
+
+    <div id="layer-panel">
+      <div class="layer-card" id="card-input">
+        <div class="lc-name">Input Layer</div>
+        <div class="lc-nodes">8</div>
+        <div class="lc-act">8 Features</div>
+      </div>
+      <div class="layer-card" id="card-h1">
+        <div class="lc-name">Hidden Layer 1</div>
+        <div class="lc-nodes">20</div>
+        <div class="lc-act">Sigmoid · W + b</div>
+      </div>
+      <div class="layer-card" id="card-h2">
+        <div class="lc-name">Hidden Layer 2</div>
+        <div class="lc-nodes">15</div>
+        <div class="lc-act">Sigmoid · W + b</div>
+      </div>
+      <div class="layer-card" id="card-h3">
+        <div class="lc-name">Hidden Layer 3</div>
+        <div class="lc-nodes">10</div>
+        <div class="lc-act">Sigmoid · W + b</div>
+      </div>
+      <div class="layer-card" id="card-output">
+        <div class="lc-name">Output Layer</div>
+        <div class="lc-nodes">8</div>
+        <div class="lc-act">Linear · W + b</div>
+      </div>
+    </div>
+
+    <div id="stats-bar">
+      <div class="stat-item">
+        <div class="stat-value">5</div>
+        <div class="stat-label">Layers</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value">61</div>
+        <div class="stat-label">Neurons</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="params-count">—</div>
+        <div class="stat-label">Parameters</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value">3</div>
+        <div class="stat-label">Hidden Layers</div>
+      </div>
+    </div>
+
+    <div id="controls-hint">
+      DRAG · Rotate<br>
+      SCROLL · Zoom<br>
+      RIGHT-DRAG · Pan
+    </div>
+
+    <div id="legend">
+      <div><span class="legend-dot" style="background:#38bdf8;box-shadow:0 0 6px #38bdf8"></span>Neuron Node</div>
+      <div><span class="legend-dot" style="background:#7dd3fc;opacity:0.5"></span>Weight Connection</div>
+      <div><span class="legend-dot" style="background:#f0abfc;box-shadow:0 0 6px #f0abfc"></span>Active Signal</div>
+    </div>
+
+    <div id="scanlines"></div>
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ─── Architecture Definition ───────────────────────────────────────────────
+const LAYERS = [
+  { name: 'Input',    nodes: 8,  color: 0x22d3ee, emissive: 0x0e7490, activation: 'input'   },
+  { name: 'Hidden 1', nodes: 20, color: 0x818cf8, emissive: 0x3730a3, activation: 'sigmoid' },
+  { name: 'Hidden 2', nodes: 15, color: 0x818cf8, emissive: 0x3730a3, activation: 'sigmoid' },
+  { name: 'Hidden 3', nodes: 10, color: 0x818cf8, emissive: 0x3730a3, activation: 'sigmoid' },
+  { name: 'Output',   nodes: 8,  color: 0x34d399, emissive: 0x065f46, activation: 'linear'  },
+];
+
+// Compute total params
+let params = 0;
+for (let i = 1; i < LAYERS.length; i++) {
+  params += LAYERS[i-1].nodes * LAYERS[i].nodes + LAYERS[i].nodes;
+}
+document.getElementById('params-count').textContent = params.toLocaleString();
+
+// ─── Scene Setup ───────────────────────────────────────────────────────────
+const container = document.getElementById('canvas-container');
+const W = container.clientWidth, H = container.clientHeight;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(W, H);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x020818);
+scene.fog = new THREE.FogExp2(0x020818, 0.018);
+
+const camera = new THREE.PerspectiveCamera(55, W/H, 0.1, 500);
+camera.position.set(0, 2, 28);
+camera.lookAt(0, 0, 0);
+
+// ─── Lighting ──────────────────────────────────────────────────────────────
+const ambientLight = new THREE.AmbientLight(0x0a1628, 3);
+scene.add(ambientLight);
+
+const dirLight = new THREE.DirectionalLight(0x38bdf8, 2);
+dirLight.position.set(10, 20, 15);
+scene.add(dirLight);
+
+const pointLight1 = new THREE.PointLight(0x818cf8, 4, 60);
+pointLight1.position.set(-8, 5, 0);
+scene.add(pointLight1);
+
+const pointLight2 = new THREE.PointLight(0x34d399, 3, 60);
+pointLight2.position.set(8, -5, 0);
+scene.add(pointLight2);
+
+// ─── Node Geometry & Materials ─────────────────────────────────────────────
+const sphereGeo = new THREE.SphereGeometry(0.28, 20, 20);
+
+function makeMaterial(hexColor, hexEmissive) {
+  return new THREE.MeshStandardMaterial({
+    color: hexColor,
+    emissive: hexEmissive,
+    emissiveIntensity: 0.6,
+    metalness: 0.3,
+    roughness: 0.35,
+    transparent: true,
+    opacity: 0.95,
+  });
+}
+
+// ─── Build Network ─────────────────────────────────────────────────────────
+const layerGroups = [];
+const nodePositions = [];  // [layerIdx][nodeIdx] = Vector3
+const allNodes = [];       // flat list of meshes
+
+const LAYER_SPACING_X = 5.5;
+const MAX_NODES_HEIGHT = 20;
+const NODE_SPACING_Y = 0.9;
+const MAX_VISIBLE_NODES = 20; // cap visual nodes for dense layers
+
+LAYERS.forEach((layerDef, li) => {
+  const x = (li - (LAYERS.length - 1) / 2) * LAYER_SPACING_X;
+  const count = Math.min(layerDef.nodes, MAX_VISIBLE_NODES);
+  const positions = [];
+  const group = new THREE.Group();
+
+  const mat = makeMaterial(layerDef.color, layerDef.emissive);
+  const totalH = (count - 1) * NODE_SPACING_Y;
+
+  for (let ni = 0; ni < count; ni++) {
+    const y = (ni - (count - 1) / 2) * NODE_SPACING_Y;
+    const mesh = new THREE.Mesh(sphereGeo, mat.clone());
+    mesh.position.set(x, y, 0);
+    mesh.userData = { layerIdx: li, nodeIdx: ni, baseY: y };
+    group.add(mesh);
+    positions.push(new THREE.Vector3(x, y, 0));
+    allNodes.push(mesh);
+  }
+
+  // If more than MAX_VISIBLE_NODES, show ellipsis dots
+  if (layerDef.nodes > MAX_VISIBLE_NODES) {
+    // Already showing max, just note in card
+  }
+
+  scene.add(group);
+  layerGroups.push(group);
+  nodePositions.push(positions);
+});
+
+// ─── Connections (Edges) ───────────────────────────────────────────────────
+// Only draw a sample of connections to avoid GPU overload
+const connectionMat = new THREE.LineBasicMaterial({
+  color: 0x1e3a5f,
+  transparent: true,
+  opacity: 0.18,
+});
+
+function createConnections(posA, posB) {
+  // Sample connections: connect each node in A to a subset of B
+  const maxConns = 60; // max lines between two layers
+  const stepA = Math.max(1, Math.floor(posA.length * posB.length / maxConns));
+  let count = 0;
+
+  for (let a = 0; a < posA.length && count < maxConns; a++) {
+    for (let b = 0; b < posB.length; b += stepA) {
+      const points = [posA[a].clone(), posB[b].clone()];
+      const geo = new THREE.BufferGeometry().setFromPoints(points);
+      const line = new THREE.Line(geo, connectionMat.clone());
+      scene.add(line);
+      count++;
+      if (count >= maxConns) break;
+    }
+  }
+}
+
+for (let i = 0; i < LAYERS.length - 1; i++) {
+  createConnections(nodePositions[i], nodePositions[i+1]);
+}
+
+// ─── Signal Pulses ─────────────────────────────────────────────────────────
+const pulseMat = new THREE.MeshBasicMaterial({ color: 0xf0abfc, transparent: true });
+const pulseGeo = new THREE.SphereGeometry(0.12, 8, 8);
+
+class Pulse {
+  constructor() {
+    this.mesh = new THREE.Mesh(pulseGeo, pulseMat.clone());
+    this.reset();
+    scene.add(this.mesh);
+  }
+  reset() {
+    const li = Math.floor(Math.random() * (LAYERS.length - 1));
+    const fromPos = nodePositions[li][Math.floor(Math.random() * nodePositions[li].length)];
+    const toPos   = nodePositions[li+1][Math.floor(Math.random() * nodePositions[li+1].length)];
+    this.from = fromPos.clone();
+    this.to   = toPos.clone();
+    this.t    = 0;
+    this.speed = 0.004 + Math.random() * 0.006;
+    this.mesh.material.color.setHex(
+      [0xf0abfc, 0x38bdf8, 0xfbbf24, 0x34d399][Math.floor(Math.random()*4)]
+    );
+    this.mesh.material.opacity = 0.9;
+  }
+  update() {
+    this.t += this.speed;
+    if (this.t >= 1) { this.reset(); return; }
+    this.mesh.position.lerpVectors(this.from, this.to, this.t);
+    this.mesh.material.opacity = Math.sin(this.t * Math.PI) * 0.9;
+    const s = 0.5 + Math.sin(this.t * Math.PI) * 0.8;
+    this.mesh.scale.setScalar(s);
+  }
+}
+
+const pulses = Array.from({length: 30}, () => new Pulse());
+
+// ─── Node glow halos ───────────────────────────────────────────────────────
+const haloGeo = new THREE.RingGeometry(0.32, 0.52, 24);
+const haloMat = new THREE.MeshBasicMaterial({
+  color: 0x38bdf8, side: THREE.DoubleSide,
+  transparent: true, opacity: 0.08,
+  depthWrite: false,
+});
+
+allNodes.forEach(node => {
+  const halo = new THREE.Mesh(haloGeo, haloMat.clone());
+  halo.position.copy(node.position);
+  halo.lookAt(camera.position);
+  node.userData.halo = halo;
+  scene.add(halo);
+});
+
+// ─── Grid floor ────────────────────────────────────────────────────────────
+const gridHelper = new THREE.GridHelper(60, 40, 0x0c2340, 0x0c1a30);
+gridHelper.position.y = -8;
+scene.add(gridHelper);
+
+// ─── Orbit Controls (manual) ───────────────────────────────────────────────
+let isDragging = false, isRight = false;
+let lastX = 0, lastY = 0;
+let theta = 0, phi = 0.15;
+let radius = 28;
+const target = new THREE.Vector3(0, 0, 0);
+
+const domEl = renderer.domElement;
+
+domEl.addEventListener('mousedown', e => {
+  isDragging = true;
+  isRight = e.button === 2;
+  lastX = e.clientX; lastY = e.clientY;
+});
+domEl.addEventListener('contextmenu', e => e.preventDefault());
+window.addEventListener('mouseup', () => isDragging = false);
+window.addEventListener('mousemove', e => {
+  if (!isDragging) return;
+  const dx = e.clientX - lastX, dy = e.clientY - lastY;
+  lastX = e.clientX; lastY = e.clientY;
+  if (!isRight) {
+    theta -= dx * 0.005;
+    phi   -= dy * 0.005;
+    phi = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, phi));
+  } else {
+    target.x -= dx * 0.04;
+    target.y += dy * 0.04;
+  }
+});
+domEl.addEventListener('wheel', e => {
+  radius += e.deltaY * 0.05;
+  radius = Math.max(8, Math.min(60, radius));
+});
+
+// Touch
+domEl.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) {
+    isDragging = true; isRight = false;
+    lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+  }
+});
+domEl.addEventListener('touchmove', e => {
+  if (!isDragging || e.touches.length !== 1) return;
+  const dx = e.touches[0].clientX - lastX, dy = e.touches[0].clientY - lastY;
+  lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+  theta -= dx * 0.005; phi -= dy * 0.005;
+  phi = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, phi));
+});
+window.addEventListener('touchend', () => isDragging = false);
+
+// ─── Layer card highlighting ────────────────────────────────────────────────
+const cardIds = ['card-input','card-h1','card-h2','card-h3','card-output'];
+let activeCard = -1;
+function highlightCard(idx) {
+  if (idx === activeCard) return;
+  activeCard = idx;
+  cardIds.forEach((id, i) => {
+    document.getElementById(id).classList.toggle('active', i === idx);
+  });
+}
+
+// ─── Animate ───────────────────────────────────────────────────────────────
+let t = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  t += 0.01;
+
+  // Orbit camera
+  camera.position.x = target.x + radius * Math.sin(theta) * Math.cos(phi);
+  camera.position.y = target.y + radius * Math.sin(phi);
+  camera.position.z = target.z + radius * Math.cos(theta) * Math.cos(phi);
+  camera.lookAt(target);
+
+  // Auto-rotate slowly when not dragging
+  if (!isDragging) theta += 0.0015;
+
+  // Pulse lights
+  pointLight1.intensity = 3 + Math.sin(t * 1.2) * 1.5;
+  pointLight2.intensity = 2.5 + Math.sin(t * 0.8 + 1) * 1.2;
+
+  // Node breathing
+  allNodes.forEach(node => {
+    const li = node.userData.layerIdx;
+    const ni = node.userData.nodeIdx;
+    const phase = li * 0.5 + ni * 0.15;
+    const scale = 0.85 + 0.18 * Math.sin(t * 1.5 + phase);
+    node.scale.setScalar(scale);
+    node.material.emissiveIntensity = 0.4 + 0.35 * Math.sin(t * 1.5 + phase);
+
+    // Halo billboard
+    if (node.userData.halo) {
+      node.userData.halo.position.copy(node.position);
+      node.userData.halo.lookAt(camera.position);
+      node.userData.halo.material.opacity = 0.05 + 0.06 * Math.sin(t * 1.5 + phase);
+    }
+  });
+
+  // Update pulses
+  pulses.forEach(p => p.update());
+
+  // Highlight nearest layer
+  const camVec = new THREE.Vector3().copy(camera.position).sub(target);
+  const layerXs = LAYERS.map((_, i) => (i - (LAYERS.length-1)/2) * LAYER_SPACING_X);
+  let closestLayer = 0, minDist = Infinity;
+  layerXs.forEach((lx, i) => {
+    const d = Math.abs(camVec.x - lx + (LAYERS.length-1)/2*LAYER_SPACING_X);
+    // Use simpler: just highlight based on camera angle
+  });
+  // Highlight by which layer is most "facing" camera
+  const angle = ((theta % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+  const layerIdx = Math.floor((angle / (Math.PI * 2)) * LAYERS.length) % LAYERS.length;
+  highlightCard(layerIdx);
+
+  renderer.render(scene, camera);
+}
+
+// ─── Resize ────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  const W = container.clientWidth, H = container.clientHeight;
+  camera.aspect = W / H;
+  camera.updateProjectionMatrix();
+  renderer.setSize(W, H);
+});
+
+animate();
+</script>
+</body>
+</html>
